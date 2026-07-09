@@ -142,6 +142,10 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
     ` ${IMAGE}`,
   );
 
+  // Het tweede netwerk pas ná de start aankoppelen (create+connect+start laat
+  // Podman de egress-resolvers uit resolv.conf weg). Deze connect vervuilt
+  // resolv.conf ná de gateway-start met de internal-net aardvark-DNS; de gateway
+  // ruimt dat zelf op (zie dns-egress.ts / de startup-sanitize in index.ts).
   runSilent(`${rt} network connect ${secondaryNetwork} ${CONTAINER}`);
 
   console.log();
