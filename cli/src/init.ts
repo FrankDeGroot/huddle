@@ -117,10 +117,21 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
   // `--security-opt label=disable` on every devcontainer so it can reach the
   // SELinux-labeled proxy socket.
   const securityOptFlags = runtime.securityOpts.map((opt) => ` --security-opt ${opt}`).join('');
+  // Primaire netwerkkeuze verschilt per engine. Bij Podman (pasta) komt verkeer
+  // van de host-port-forward de container binnen via de PRIMAIRE interface, met
+  // een bron-IP in dát subnet. Staat devcontainer-net primair, dan lijkt de
+  // operator uit het devcontainer-subnet te komen en blokkeert de source-IP-gate
+  // (api.ts) de web-UI ("endpoint not allowed from devcontainer network"). Zet
+  // daarom het egress-netwerk primair zodat host-verkeer uit een niet-geblokkeerd
+  // subnet komt; devcontainer-net wordt daarna alsnog aangekoppeld voor de proxy.
+  // Docker stuurt de port-forward via zijn eigen proxy (bron = loopback/bridge-gw,
+  // niet het primaire subnet), dus daar houden we de bestaande volgorde aan.
+  const primaryNetwork = runtime.name === 'podman' ? runtime.defaultNetwork : INTERNAL_NET;
+  const secondaryNetwork = runtime.name === 'podman' ? INTERNAL_NET : runtime.defaultNetwork;
   run(
     `${rt} run -d` +
     ` --name ${CONTAINER}` +
-    ` --network ${INTERNAL_NET}` +
+    ` --network ${primaryNetwork}` +
     securityOptFlags +
     ` -e HUDDLE_RUNTIME=${runtime.name}` +
     ` -p ${HOST_PORT}:3000` +
@@ -131,7 +142,7 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
     ` ${IMAGE}`,
   );
 
-  runSilent(`${rt} network connect ${runtime.defaultNetwork} ${CONTAINER}`);
+  runSilent(`${rt} network connect ${secondaryNetwork} ${CONTAINER}`);
 
   console.log();
   console.log(green(`[OK] Huddle is running at http://localhost:${HOST_PORT}`));
