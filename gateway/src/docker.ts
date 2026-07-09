@@ -689,7 +689,7 @@ export async function createAndStartContainer(params: StartParams): Promise<stri
       `Verwijder die container eerst of kies een andere naam met --name.`
     );
   } catch (err: any) {
-    if (!String(err.message).startsWith(`Docker API GET /containers/${encodeURIComponent(containerName)}/json`)) {
+    if (!String(err.message).includes(`Docker API GET /containers/${encodeURIComponent(containerName)}/json → 404:`)) {
       throw err;
     }
   }
