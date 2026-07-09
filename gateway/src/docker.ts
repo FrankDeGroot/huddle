@@ -354,8 +354,21 @@ export async function buildImage(imageName: string, dockerfilePath: string): Pro
   });
 }
 
+function isAlreadyConnectedToNetworkError(err: unknown): boolean {
+  const message = String((err as Error)?.message ?? err).toLowerCase();
+  return (
+    message.includes('already exists in network') ||
+    message.includes('already connected to network') ||
+    message.includes('network is already connected')
+  );
+}
+
 export async function connectNetwork(networkName: string, containerName: string): Promise<void> {
-  await dockerRequest('POST', `/networks/${encodeURIComponent(networkName)}/connect`, { Container: containerName });
+  try {
+    await dockerRequest('POST', `/networks/${encodeURIComponent(networkName)}/connect`, { Container: containerName });
+  } catch (err) {
+    if (!isAlreadyConnectedToNetworkError(err)) throw err;
+  }
 }
 
 export async function disconnectNetwork(networkName: string, containerName: string): Promise<void> {
@@ -668,15 +681,24 @@ export async function createAndStartContainer(params: StartParams): Promise<stri
 
   const password = crypto.randomBytes(12).toString('base64url');
 
+  try {
+    const existing = await inspectContainer(containerName);
+    const existingIde = existing?.Config?.Labels?.['com.devcontainer.ide'] ?? ideFromContainerLabels(existing?.Config?.Labels);
+    throw new Error(
+      `Container '${containerName}' bestaat al${existingIde ? ` (${existingIde})` : ''}. ` +
+      `Verwijder die container eerst of kies een andere naam met --name.`
+    );
+  } catch (err: any) {
+    if (!String(err.message).startsWith(`Docker API GET /containers/${encodeURIComponent(containerName)}/json`)) {
+      throw err;
+    }
+  }
+
   const netName = `dc-net-${containerName}`;
   if (!(await networkExists(netName))) {
     await createNetwork(netName);
   }
-  try {
-    await connectNetwork(netName, 'huddle');
-  } catch (err: any) {
-    if (!String(err.message).includes('already exists in network')) throw err;
-  }
+  await connectNetwork(netName, 'huddle');
 
   if (!(await imageExists(imageName))) {
     const dockerfilePath = `/base-devimage-${ideName}/Dockerfile`;

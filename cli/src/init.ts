@@ -26,6 +26,25 @@ function runSilent(cmd: string): boolean {
   }
 }
 
+function prepareSocketDirectory(rt: string, hostTmpSockets: string): void {
+  if (process.platform === 'win32' && rt === 'podman') {
+    console.log(dim(`  (Windows/Podman: creating ${hostTmpSockets} in the Podman machine)`));
+    run(`${rt} machine ssh "mkdir -p ${hostTmpSockets}"`);
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    console.log(dim(`  (Windows: the engine uses ${hostTmpSockets} on the VM/engine host)`));
+    return;
+  }
+
+  try {
+    fs.mkdirSync(hostTmpSockets, { recursive: true });
+  } catch (err) {
+    console.log(yellow(`[!] Could not create ${hostTmpSockets}: ${err}`));
+  }
+}
+
 /**
  * Pulls the devcontainer base images ahead of time. Best-effort: if an image is
  * not (yet) available in the registry, we only warn — the gateway then builds it
@@ -90,23 +109,13 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
   // gateway and devcontainers across two filesystems, and Unix sockets are
   // unreliable on such a drvfs/9p mount anyway.
   const hostTmpSockets = '/tmp/dc-sockets';
-  if (process.platform === 'win32') {
-    // Cannot be created locally from Windows; the engine creates a missing
-    // bind source itself in the VM on `run`.
-    console.log(dim(`  (Windows: the engine creates ${hostTmpSockets} in the VM)`));
-  } else {
-    try {
-      fs.mkdirSync(hostTmpSockets, { recursive: true });
-    } catch (err) {
-      console.log(yellow(`[!] Could not create ${hostTmpSockets}: ${err}`));
-    }
-  }
+  prepareSocketDirectory(rt, hostTmpSockets);
 
   console.log(dim(`Starting container`));
   run(
     `${rt} run -d` +
     ` --name ${CONTAINER}` +
-    ` --network ${INTERNAL_NET}` +
+    ` --network ${runtime.defaultNetwork}` +
     ` -p ${HOST_PORT}:3000` +
     ` -v ${VOLUME}:/data` +
     ` -v ${runtime.socketPath}:/var/run/docker.sock` +
@@ -115,7 +124,7 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
     ` ${IMAGE}`,
   );
 
-  runSilent(`${rt} network connect ${runtime.defaultNetwork} ${CONTAINER}`);
+  runSilent(`${rt} network connect ${INTERNAL_NET} ${CONTAINER}`);
 
   console.log();
   console.log(green(`[OK] Huddle is running at http://localhost:${HOST_PORT}`));
