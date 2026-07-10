@@ -1,0 +1,190 @@
+@if (vm$ | async; as vm) {
+  <div class="dashboard-grid">
+
+    <div class="welcome col-span-4">
+      <div class="welcome__bg"></div>
+      <div class="welcome__text">
+        <h1>Welcome back!</h1>
+        <p>Everything looks secure. Keep building amazing things.</p>
+      </div>
+    </div>
+
+    <a class="kpi" routerLink="/containers">
+      <div class="kpi__head">
+        <span class="kpi__label">Containers</span>
+        <span class="kpi__icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        </span>
+      </div>
+      <div class="kpi__value">{{ vm.containers.length }}</div>
+      <div class="kpi__foot">
+        <span class="dot" [ngClass]="vm.runningCount > 0 ? 'dot--ok' : 'dot--warn'"></span>
+        <b>{{ vm.runningCount }}</b> running
+      </div>
+    </a>
+
+    <a class="kpi" routerLink="/firewall">
+      <div class="kpi__head">
+        <span class="kpi__label">Firewall Rules</span>
+        <span class="kpi__icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+        </span>
+      </div>
+      <div class="kpi__value">{{ vm.rules.length }}</div>
+      <div class="kpi__foot">
+        <span class="dot" [ngClass]="vm.requestedRules.length > 0 ? 'dot--warn' : 'dot--ok'"></span>
+        <b>{{ vm.requestedRules.length }}</b> pending
+      </div>
+    </a>
+
+    <a class="kpi" routerLink="/docker-access">
+      <div class="kpi__head">
+        <span class="kpi__label">Docker Access</span>
+        <span class="kpi__icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.4 18 22 11h-1l-9-3-9 3H2l2.6 7"/><path d="M12 8V2H8"/><path d="M5 11v-1a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1"/></svg>
+        </span>
+      </div>
+      <div class="kpi__value">{{ vm.activeGrants.length }}</div>
+      <div class="kpi__foot"><span class="dot dot--ok"></span><b>{{ vm.activeGrants.length }}</b> active grants</div>
+    </a>
+
+    <a class="kpi" routerLink="/firewall">
+      <div class="kpi__head">
+        <span class="kpi__label">Blocked Traffic</span>
+        <span class="kpi__icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 17.3-8-13a2 2 0 0 0-3.4 0l-8 13A2 2 0 0 0 4 20h16a2 2 0 0 0 1.7-2.7Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        </span>
+      </div>
+      <div class="kpi__value">{{ vm.requestedRules.length }}</div>
+      <div class="kpi__foot">
+        @if (vm.requestedRules.length > 0) {
+          <span class="dot dot--err"></span><b>{{ vm.requestedRules.length }}</b> blocked
+        } @else {
+          <span class="dot dot--ok"></span>All clear
+        }
+      </div>
+    </a>
+
+    <div class="card col-span-3">
+      <div class="card__head">
+        <h3 class="card__title">Recent Containers</h3>
+        <a class="link" routerLink="/containers">View all
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+      @if (vm.recentContainers.length === 0) {
+        <p class="empty-note">No containers</p>
+      } @else {
+        <table class="table">
+          <thead><tr><th>Container</th><th>Status</th><th>Since</th></tr></thead>
+          <tbody>
+            @for (c of vm.recentContainers; track c.name) {
+              <tr class="clickable" [routerLink]="['/container', c.name]">
+                <td>
+                  <div class="container-cell">
+                    <div class="cc-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+                    </div>
+                    <div class="name">{{ c.presentableName || c.name }}</div>
+                  </div>
+                </td>
+                <td><span class="status" [ngClass]="'status--' + statusClass(c)">{{ statusLabel(c) }}</span></td>
+                <td class="muted">{{ c.created | relTime }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    <div class="card col-span-1">
+      <div class="card__head">
+        <h3 class="card__title">Requested</h3>
+        <a class="link" routerLink="/firewall">View all
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+      @if (vm.topRequested.length === 0) {
+        <p class="empty-note">No pending requests</p>
+      } @else {
+        @for (r of vm.topRequested; track r.id) {
+          <div class="fw-rule">
+            <div class="fw-rule__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+            </div>
+            <div>
+              <div class="fw-rule__name">{{ r.domain }}</div>
+              <div class="fw-rule__sub">{{ r.container_name || r.container_id || 'Global' }}</div>
+            </div>
+            <div class="row-actions">
+              <app-pie-menu [config]="pieConfig" (action)="onPieAction($event, r)"/>
+            </div>
+          </div>
+        }
+      }
+    </div>
+
+    <div class="card col-span-1">
+      <div class="card__head">
+        <h3 class="card__title">Docker Access Grants</h3>
+        <a class="link" routerLink="/docker-access">Manage</a>
+      </div>
+      @if (vm.activeGrants.length === 0) {
+        <p class="empty-note">No active access</p>
+      } @else {
+        <table class="table">
+          <thead><tr><th>Container</th><th>Expires</th><th class="col-actions">Action</th></tr></thead>
+          <tbody>
+            @for (entry of vm.activeGrants; track entry[0]) {
+              <tr>
+                <td>{{ entry[0] }}</td>
+                <td><span class="grant-timer active">{{ entry[1].until - vm.now > 0 ? (Math.ceil((entry[1].until - vm.now) / 60) + 'm remaining') : 'Expired' }}</span></td>
+                <td class="col-actions">
+                  <button class="btn btn-delete btn-sm" (click)="revokeGrant(entry[0])">Revoke</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    <div class="card col-span-3">
+      <div class="card__head"><h3 class="card__title">Activity Feed</h3></div>
+      <div class="feed">
+        @if (vm.activityRules.length === 0) {
+          <p class="empty-note">No activity</p>
+        } @else {
+          @for (r of vm.activityRules; track r.id) {
+            <div class="feed-item">
+              <div class="feed-item__icon" [ngClass]="r.status === 'allow' ? 'icon--ok' : r.status === 'deny' ? 'icon--err' : 'icon--warn'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg>
+              </div>
+              <div class="feed-item__body">
+                <div class="feed-item__title">{{ r.domain }}</div>
+                <div class="feed-item__sub">{{ r.container_name || r.container_id || 'Global' }} · {{ r.status === 'allow' ? 'allowed' : r.status === 'deny' ? 'blocked' : 'requested' }}</div>
+              </div>
+              <span class="feed-item__time">{{ r.last_seen | relTime }}</span>
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="huddle-banner col-span-4">
+      <div class="huddle-banner__bg"></div>
+      <div class="huddle-banner__hex"></div>
+      <div class="huddle-banner__text">
+        <b>Huddle! <span class="accent">We've got your back.</span></b>
+        <span>Secure dev environments in the DMZ, protected from the cold outside.</span>
+      </div>
+      <div class="huddle-banner__cta">
+        <button class="btn btn--accent" (click)="modal.openStart()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Start devcontainer
+        </button>
+      </div>
+    </div>
+
+  </div>
+}

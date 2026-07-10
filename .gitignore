@@ -1,0 +1,46 @@
+.ijdevc/
+
+# Claude Code / AI-tool state — local only, never commit
+.claude/
+**/.claude/
+.claude/settings.local.json
+
+# Runtime / debug logs (incl. rider-client-diagnose.log generated in workspaces)
+*.log
+
+# Ad-hoc devcontainer comparison / diagnose captures
+rider_working.json
+rider_not_working.json
+compare-broken-devcontainer-empty1.json
+compare-working-devcontainer-empty2.json
+.idea/
+
+# Feature planning docs — local only, not for remote
+features/
+.worktrees/
+
+# npm auth token — nooit committen
+.npmrc
+
+# Lokaal GitHub-token — nooit committen
+github.txt
+
+# Huddle audit logs — runtime data, niet voor versiebeheer
+.audit/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Stray/self-referential nested CLI package (accidental) — never commit
+cli/cli/
+
+/aikido
+
+# AI agent config tree — beheerd buiten versiebeheer
+/.ai
+
+# Interne presentatie/binaries — niet voor de publieke repo
+*.pptx

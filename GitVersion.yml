@@ -1,0 +1,11 @@
+# GitVersion-configuratie voor de Huddle CLI.
+#
+# GitVersion levert de basis-SemVer (major.minor.patch) uit de laatste git-tag
+# (het anker, bv. v1.0.1) plus `commitsSinceVersionSource` = het aantal commits
+# sinds die tag. De publish-workflow telt dat aantal bij de patch op, zodat elke
+# commit op main een unieke, oplopende versie krijgt (1.0.1 -> 1.0.2 -> ...).
+# Dit werkt onafhankelijk van de versioning-modus (en van GitVersion 5 vs 6).
+#
+# Een nieuwe minor/major zet je door een nieuwe tag te pushen, bv.:
+#   git tag v1.1.0 && git push origin v1.1.0
+next-version: 1.0.1
