@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 
-export type RuntimeName = 'docker' | 'podman';
+export type RuntimeName = 'docker' | 'podman' | 'wslc';
 
 export interface ContainerRuntime {
   name: RuntimeName;
@@ -40,19 +40,21 @@ function buildRuntime(name: RuntimeName): ContainerRuntime {
   if (name === 'podman') {
     return { name, socketPath: podmanSocketPath(), defaultNetwork: 'podman' };
   }
+  // wslc speaks the Docker CLI and exposes a Docker-compatible socket, so it
+  // shares Docker's socket path and default bridge network.
   return { name, socketPath: dockerSocketPath(), defaultNetwork: 'bridge' };
 }
 
 export function parseRuntimeName(value: string): RuntimeName {
   const normalized = value.toLowerCase().trim();
-  if (normalized === 'docker' || normalized === 'podman') return normalized;
-  throw new Error(`Unknown container runtime: ${value}. Choose docker or podman.`);
+  if (normalized === 'docker' || normalized === 'podman' || normalized === 'wslc') return normalized;
+  throw new Error(`Unknown container runtime: ${value}. Choose docker, podman or wslc.`);
 }
 
 /**
  * Determines which container runtime to use.
  * An explicit choice (via --runtime or HUDDLE_RUNTIME) wins; otherwise it is
- * auto-detected: Docker first, then Podman.
+ * auto-detected: Docker first, then Podman, then wslc.
  */
 export function resolveRuntime(explicit?: string): ContainerRuntime {
   const requested = explicit ?? process.env.HUDDLE_RUNTIME;
@@ -66,9 +68,10 @@ export function resolveRuntime(explicit?: string): ContainerRuntime {
 
   if (isAvailable('docker')) return buildRuntime('docker');
   if (isAvailable('podman')) return buildRuntime('podman');
+  if (isAvailable('wslc')) return buildRuntime('wslc');
 
   throw new Error(
-    'No working container runtime found. Install and start Docker or Podman,\n' +
-    'or pick one explicitly with --runtime <docker|podman> or the HUDDLE_RUNTIME env var.',
+    'No working container runtime found. Install and start Docker, Podman or wslc,\n' +
+    'or pick one explicitly with --runtime <docker|podman|wslc> or the HUDDLE_RUNTIME env var.',
   );
 }
