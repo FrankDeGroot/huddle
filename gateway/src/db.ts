@@ -118,23 +118,33 @@ export function initDb(): void {
     db.exec('ALTER TABLE rules ADD COLUMN last_path TEXT');
   }
 
+  // Domeinen worden voortaan canoniek (lowercase) opgeslagen zodat de exacte
+  // lookup en de wildcard-match op dezelfde vorm werken (finding #3). Migreer
+  // bestaande rijen idempotent naar lowercase VÓÓR de dedup hieronder, zodat
+  // case-varianten (`GIST.github.com` vs `gist.github.com`) samenvallen en de
+  // dedup ze tot één rij terugbrengt in plaats van op de unieke index te botsen.
+  db.exec('UPDATE rules SET domain = lower(domain) WHERE domain <> lower(domain)');
+
   // Uniciteit geldt nu op (domain, container, pad): meerdere padregels per
   // domein moeten naast elkaar kunnen bestaan. De oude domain+container index
   // wordt vervangen.
   // Opschonen voorkomt dat een migratie crasht wanneer oude data per ongeluk
-  // meerdere rijen met dezelfde unieke sleutel bevat.
+  // meerdere rijen met dezelfde unieke sleutel bevat. NOCASE in de GROUP BY
+  // zodat de dedup dezelfde hoofdletter-ongevoeligheid hanteert als de index.
   db.exec(`
     DELETE FROM rules
     WHERE id NOT IN (
       SELECT MAX(id)
       FROM rules
-      GROUP BY domain, COALESCE(container_id, ''), COALESCE(path_pattern, '')
+      GROUP BY domain COLLATE NOCASE, COALESCE(container_id, ''), COALESCE(path_pattern, '')
     )
   `);
   db.exec('DROP INDEX IF EXISTS idx_rules_domain_container');
+  // De oude index kon nog zonder NOCASE bestaan; herbouw hem case-insensitief.
+  db.exec('DROP INDEX IF EXISTS idx_rules_domain_container_path');
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_domain_container_path
-       ON rules (domain, COALESCE(container_id, ''), COALESCE(path_pattern, ''))`
+       ON rules (domain COLLATE NOCASE, COALESCE(container_id, ''), COALESCE(path_pattern, ''))`
   );
 
   // Seed the global allow rule for huddle's own domain so the sudo-audit
@@ -430,9 +440,34 @@ export function createFolderMapping(m: Omit<FolderMapping, 'id'>): number {
   return Number(result.lastInsertRowid);
 }
 
+// De kolommen die via update gewijzigd mogen worden. De TS-`Partial<>` is enkel
+// een compile-time garantie — op runtime komt `m` rechtstreeks uit de request-
+// body. Zonder deze allowlist werden de JSON-sleutels ongefilterd als SQL-
+// identifiers geïnterpoleerd, wat SQL-injectie via een geprepareerde sleutel
+// mogelijk maakte (finding #9, bv. `container_path = (SELECT ...), name`).
+const FOLDER_MAPPING_COLUMNS: ReadonlyArray<keyof Omit<FolderMapping, 'id'>> = [
+  'name', 'host_path', 'volume_name', 'container_path', 'read_only', 'enabled', 'sort_order',
+];
+
+// Valideer de update-sleutels tegen de kolom-allowlist. Puur (geen DB) zodat de
+// SQL-injectie-afweer (finding #9) los testbaar is. Retourneert de toegestane
+// sleutels; gooit op elke onbekende sleutel (fail-closed).
+export function validateFolderMappingKeys(m: object): Array<keyof Omit<FolderMapping, 'id'>> {
+  const allowed = FOLDER_MAPPING_COLUMNS as ReadonlyArray<string>;
+  const unknown = Object.keys(m).filter(k => !allowed.includes(k));
+  if (unknown.length > 0) {
+    throw new Error(`unknown folder-mapping field(s): ${unknown.join(', ')}`);
+  }
+  return Object.keys(m).filter((k): k is keyof Omit<FolderMapping, 'id'> => allowed.includes(k));
+}
+
 export function updateFolderMapping(id: number, m: Partial<Omit<FolderMapping, 'id'>>): void {
-  const fields = Object.keys(m).map(k => `${k} = ?`).join(', ');
-  const values = [...Object.values(m), id];
+  // Alleen bekende kolommen accepteren; sleutels worden zo nooit uit caller-input
+  // in de SQL-tekst gezet.
+  const keys = validateFolderMappingKeys(m);
+  if (keys.length === 0) return;
+  const fields = keys.map(k => `${k} = ?`).join(', ');
+  const values = [...keys.map(k => (m as Record<string, unknown>)[k]), id];
   db.prepare(`UPDATE folder_mappings SET ${fields} WHERE id = ?`).run(...values);
 }
 

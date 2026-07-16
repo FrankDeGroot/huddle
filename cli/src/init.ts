@@ -1,7 +1,9 @@
 import { execSync } from 'child_process';
+import crypto from 'crypto';
 import { bold, green, dim, yellow } from './utils';
 import { resolveRuntime } from './runtime';
 import { ResolvedImages, gatewayEnvFlags } from './images';
+import { readConfig, writeConfig } from './config';
 import fs from 'fs';
 
 const CONTAINER = 'huddle';
@@ -90,10 +92,19 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
   // gateway and devcontainers across two filesystems, and Unix sockets are
   // unreliable on such a drvfs/9p mount anyway.
   const hostTmpSockets = '/tmp/dc-sockets';
-  if (process.platform === 'win32') {
-    // Cannot be created locally from Windows; the engine creates a missing
-    // bind source itself in the VM on `run`.
-    console.log(dim(`  (Windows: the engine creates ${hostTmpSockets} in the VM)`));
+  if (runtime.isRemote) {
+    if (runtime.name === 'podman') {
+      // Podman does NOT create a missing bind source itself (unlike Docker
+      // Desktop) and fails with "statfs: no such file or directory". So create
+      // the directory explicitly in the machine VM; the socket lives there too.
+      console.log(dim(`  (Podman: creating ${hostTmpSockets} in the machine VM)`));
+      if (!runSilent(`podman machine ssh "mkdir -p ${hostTmpSockets}"`)) {
+        console.log(yellow(`[!] Could not create ${hostTmpSockets} in the Podman VM.`));
+      }
+    } else {
+      // Docker Desktop creates a missing bind source itself in the VM on `run`.
+      console.log(dim(`  (${runtime.name}: the engine creates ${hostTmpSockets} in the VM)`));
+    }
   } else {
     try {
       fs.mkdirSync(hostTmpSockets, { recursive: true });
@@ -103,10 +114,37 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
   }
 
   console.log(dim(`Starting container`));
+  // The gateway is engine-agnostic (talks the Docker-compatible API on the
+  // mounted socket), but does need to know it's Podman: it then sets
+  // `--security-opt label=disable` on every devcontainer so it can reach the
+  // SELinux-labeled proxy socket.
+  const securityOptFlags = runtime.securityOpts.map((opt) => ` --security-opt ${opt}`).join('');
+
+  // Operator-token voor de control-plane-auth. Hergebruik het token uit de
+  // config (zodat een bestaande browser-sessie/CLI blijft werken over re-inits),
+  // anders genereer er één. We geven het aan de gateway mee via env én bewaren
+  // het lokaal zodat volgende `huddle`-commando's zich kunnen authenticeren.
+  const cfg = readConfig();
+  const operatorToken =
+    process.env.HUDDLE_OPERATOR_TOKEN?.trim() ||
+    (cfg.operatorToken && cfg.operatorToken.trim()) ||
+    crypto.randomBytes(32).toString('base64url');
+  if (cfg.operatorToken !== operatorToken) {
+    writeConfig({ ...cfg, operatorToken });
+  }
+  // The container is created on the engine's default network first (with -p),
+  // then joins devcontainer-net (--internal) afterwards: Docker skips the host
+  // port-forward entirely when a container is created directly on an --internal
+  // network (moby/moby#36174). Which source IP the gateway sees for forwarded
+  // traffic no longer matters — the control plane authenticates with the
+  // operator token instead of source-IP filtering.
   run(
     `${rt} run -d` +
     ` --name ${CONTAINER}` +
-    ` --network ${INTERNAL_NET}` +
+    ` --network ${runtime.defaultNetwork}` +
+    securityOptFlags +
+    ` -e HUDDLE_RUNTIME=${runtime.name}` +
+    ` -e HUDDLE_OPERATOR_TOKEN=${operatorToken}` +
     ` -p ${HOST_PORT}:3000` +
     ` -v ${VOLUME}:/data` +
     ` -v ${runtime.socketPath}:/var/run/docker.sock` +
@@ -115,8 +153,22 @@ export async function runInit(opts: InitOptions, images: ResolvedImages): Promis
     ` ${IMAGE}`,
   );
 
-  runSilent(`${rt} network connect ${runtime.defaultNetwork} ${CONTAINER}`);
+  // Attaching devcontainer-net after the container has started pollutes
+  // resolv.conf on Podman with that network's internal aardvark-DNS; the
+  // gateway cleans that up itself (see dns-egress.ts / the startup sanitize in
+  // index.ts).
+  runSilent(`${rt} network connect ${INTERNAL_NET} ${CONTAINER}`);
 
   console.log();
   console.log(green(`[OK] Huddle is running at http://localhost:${HOST_PORT}`));
+  console.log();
+  // Volledige auto-login-link: open deze en de portal logt je automatisch in met
+  // het operator-token (de frontend leest ?token=..., logt in en verwijdert het
+  // daarna uit de adresbalk). Zo hoef je niets te plakken.
+  const loginUrl = `http://localhost:${HOST_PORT}/?token=${encodeURIComponent(operatorToken)}`;
+  console.log(bold('Open the portal (auto-login link):'));
+  console.log(green(`    ${loginUrl}`));
+  console.log(dim('  Opens the portal and logs you in automatically.'));
+  console.log(dim(`  Manual token (if you prefer to paste it): ${operatorToken}`));
+  console.log(dim('  The token is also saved to ~/.huddle/config.json for the CLI.'));
 }

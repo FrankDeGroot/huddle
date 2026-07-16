@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
-import net from 'net';
 import { WebSocketServer, WebSocket } from 'ws';
 import Fastify, { FastifyInstance } from 'fastify';
 import { stateEvents, notifyStateChanged } from './events';
@@ -21,14 +20,20 @@ import {
   forceDeleteContainer,
   startExistingContainer,
   cleanupContainerNetwork,
-  listNetworks,
   resolveContainerByIp,
   isIdeName,
   execContainerOutput,
   type StartParams,
   type IdeName,
 } from './docker';
-import { cidrToRange, isDevcontainerSource, type IpRange } from './net-gate';
+import {
+  getOperatorToken,
+  isAuthenticated,
+  timingSafeEqualStr,
+  isAllowedOrigin,
+  sessionCookie,
+  clearSessionCookie,
+} from './auth';
 import { attachTerminal } from './terminal';
 import { ptyManager } from './pty-manager';
 import { getCaCertPem } from './tls-ca';
@@ -61,60 +66,62 @@ interface Rule {
   request_count: number;
 }
 
-// ── Source-IP gate: deny management-API access from devcontainer networks ──
-// The API listens on 0.0.0.0 so the host port forward (-p 3000:3000) works,
-// but Huddle is also attached to devcontainer-net and every dc-net-* — without
-// this filter, any container on those networks can reach unauth'd /api/* routes.
-// Pure IPv4/CIDR-logica zit in net-gate.ts (los testbaar). Hier alleen de live
-// cache + Docker-refresh eromheen.
-let blockedSubnets: IpRange[] = [];
-
-async function refreshBlockedSubnets(): Promise<void> {
-  try {
-    const nets = await listNetworks();
-    const next: IpRange[] = [];
-    for (const n of nets) {
-      const name: string = n.Name ?? '';
-      if (name !== 'devcontainer-net' && !/^dc-net-/.test(name)) continue;
-      for (const cfg of (n.IPAM?.Config ?? [])) {
-        const range = cidrToRange(cfg.Subnet);
-        if (range) next.push(range);
-      }
-    }
-    blockedSubnets = next;
-  } catch (e) {
-    console.error('[api] failed to refresh blocked subnets:', (e as Error).message);
-  }
-}
-
-function isFromDevcontainer(remoteAddr: string | null | undefined): boolean {
-  return isDevcontainerSource(remoteAddr, blockedSubnets);
-}
-
 export async function createApiServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
-  // Build the blocked-subnet cache and refresh it periodically so new
-  // dc-net-* networks (created when a devcontainer starts) get picked up. De
-  // eerste vulling wordt vóór app.listen() afgewacht (zie onderaan), zodat er
-  // geen opstart-venster is waarin een devcontainer de gate omzeilt doordat de
-  // cache nog leeg is.
-  setInterval(refreshBlockedSubnets, 5000).unref();
-
-  // Devcontainers may only reach a tiny whitelist of endpoints (currently just
-  // the sudo audit ingest). Everything else on the API is admin-only.
-  const devcontainerWhitelist: Array<{ method: string; path: string }> = [
+  // Eén toegangsmodel voor de hele management-API: het operator-token (auth.ts).
+  // Source-IP zegt hier niets betrouwbaars — Docker's proxy en Podman's
+  // rootlessport herschrijven de bron naar een bridge-gateway-IP, en onder
+  // rootless Podman wisselt zelfs wélk netwerk dat is per restart/disconnect
+  // (GetRootlessPortChildIP itereert een map). Devcontainers, LAN en operator
+  // zijn dus alleen met het token te scheiden; de vroegere subnet-gate is
+  // daarom vervangen door auth op elke /api/*-route.
+  //
+  // Endpoints die devcontainers zónder token moeten kunnen bereiken (sudo-audit
+  // ingest en de proxy-CA). Bewust minimaal houden: alles hier is voor iedereen
+  // op het netwerk aanroepbaar.
+  const devcontainerPublicApi: Array<{ method: string; path: string }> = [
     { method: 'POST', path: '/api/audit/sudo' },
     { method: 'GET',  path: '/api/tls/ca.crt' },
   ];
+  // Endpoints die de operator-browser/CLI zonder ingelogde sessie moet kunnen
+  // bereiken om überhaupt te kúnnen inloggen (en te zien dát login nodig is).
+  // De statische SPA-assets vallen hier ook onder (alles buiten /api/): het is
+  // enkel client-code, en de API zelf blijft achter auth.
+  const authPublicApi = new Set<string>(['/api/auth/login', '/api/auth/logout', '/api/auth/status']);
+
   app.addHook('onRequest', async (req, reply) => {
-    if (!isFromDevcontainer(req.socket.remoteAddress)) return;
-    const ok = devcontainerWhitelist.some(
-      w => w.method === req.method && w.path === req.url,
-    );
-    if (!ok) {
-      reply.code(403).send({ error: 'forbidden', reason: 'endpoint not allowed from devcontainer network' });
+    const url = req.url ?? '';
+    const pathOnly = url.split('?')[0];
+    if (!pathOnly.startsWith('/api/')) return;      // statische SPA-assets vrij
+    if (authPublicApi.has(pathOnly)) return;         // login/logout/status vrij
+    if (devcontainerPublicApi.some(w => w.method === req.method && w.path === pathOnly)) return;
+    if (!isAuthenticated(req.headers)) {
+      reply.code(401).send({ error: 'unauthorized', reason: 'operator authentication required' });
     }
+  });
+
+  // ── Auth-endpoints ─────────────────────────────────────────────────────────
+  // Login: token controleren (constant-tijd) en bij succes een httpOnly,
+  // SameSite=Strict session-cookie zetten. SameSite=Strict is meteen de
+  // CSRF/CSWSH-verdediging (finding #4): de browser stuurt de cookie niet mee op
+  // cross-site requests of WebSocket-handshakes.
+  app.post<{ Body: { token?: string } }>('/api/auth/login', async (req, reply) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token : '';
+    if (!token || !timingSafeEqualStr(token, getOperatorToken())) {
+      return reply.code(401).send({ error: 'invalid_token' });
+    }
+    reply.header('set-cookie', sessionCookie(token));
+    return { ok: true };
+  });
+
+  app.post('/api/auth/logout', async (_req, reply) => {
+    reply.header('set-cookie', clearSessionCookie());
+    return { ok: true };
+  });
+
+  app.get('/api/auth/status', async (req) => {
+    return { authenticated: isAuthenticated(req.headers) };
   });
 
   // ── WebSocket push ────────────────────────────────────────────────────────
@@ -164,8 +171,18 @@ export async function createApiServer(): Promise<FastifyInstance> {
   stateEvents.on('changed', broadcast);
 
   app.server.on('upgrade', (req, socket, head) => {
-    if (isFromDevcontainer((socket as net.Socket).remoteAddress)) {
+    // Cross-Site WebSocket Hijacking (finding #4): een pagina die de operator
+    // bezoekt mag geen WS naar de portal openen. Twee onafhankelijke lagen:
+    // (1) Origin moet same-origin zijn; (2) een geldige operator-sessie (cookie/
+    // bearer) is vereist — en dankzij SameSite=Strict reist die cookie sowieso
+    // niet mee op een cross-site handshake.
+    if (!isAllowedOrigin(req.headers['origin'] as string | undefined, req.headers['host'])) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (!isAuthenticated(req.headers)) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -374,9 +391,16 @@ export async function createApiServer(): Promise<FastifyInstance> {
     Body: { domain: string; container_id?: string | null; status: RuleStatus; expires_at?: number | null; path_pattern?: string | null };
   }>('/api/rules', async (req, reply) => {
     const { domain, container_id = null, status, expires_at = null, path_pattern = null } = req.body;
-    if (!domain || !['requested', 'allow', 'deny'].includes(status)) {
+    // Eis expliciet een non-lege string: een truthy niet-string domain (bv. een
+    // getal/object in de JSON) zou anders verderop klappen met een 500 i.p.v.
+    // deze nette 400.
+    if (typeof domain !== 'string' || !domain || !['requested', 'allow', 'deny'].includes(status)) {
       return reply.code(400).send({ error: 'invalid payload' });
     }
+    // Domein opslaan zoals aangeleverd — géén casing-mutatie. De rule-engine
+    // matcht al hoofdletter-ongevoelig (COLLATE NOCASE in db.ts + canonicalizeHost/
+    // matchDomain, finding #3), dus lowercasen is overbodig en zou de echo-back
+    // naar clients veranderen.
     try {
       const info = db
         .prepare(
@@ -385,9 +409,11 @@ export async function createApiServer(): Promise<FastifyInstance> {
         .run(domain, container_id, status, expires_at, path_pattern);
       const inserted = db.prepare(`SELECT * FROM rules WHERE id = ?`).get(info.lastInsertRowid) as Rule;
       // Ruim alleen de host-only requested-rij op; padregels per domein blijven
-      // staan zodat fijnmazig beleid naast elkaar kan bestaan.
+      // staan zodat fijnmazig beleid naast elkaar kan bestaan. COLLATE NOCASE:
+      // requested-rijen worden lowercase aangemaakt (proxy/canonicalizeHost), dus
+      // matchen ook als de operator hier mixed-case aanlevert.
       if (container_id === null && path_pattern === null && (status === 'allow' || status === 'deny')) {
-        db.prepare(`DELETE FROM rules WHERE domain = ? AND status = 'requested' AND path_pattern IS NULL`).run(domain);
+        db.prepare(`DELETE FROM rules WHERE domain = ? COLLATE NOCASE AND status = 'requested' AND path_pattern IS NULL`).run(domain);
       }
       logAudit({ containerId: container_id, domain, action: `admin:rule-${status}`, ruleId: Number(info.lastInsertRowid) });
       notifyStateChanged();
@@ -886,10 +912,15 @@ export async function createApiServer(): Promise<FastifyInstance> {
 
   app.put<{ Params: { id: string }; Body: Partial<Omit<FolderMapping, 'id'>> }>(
     '/api/folder-mappings/:id',
-    async (req) => {
+    async (req, reply) => {
       const id = Number(req.params.id);
-      if (!getFolderMapping(id)) throw new Error('not found');
-      updateFolderMapping(id, req.body);
+      if (!getFolderMapping(id)) return reply.code(404).send({ error: 'not_found' });
+      try {
+        updateFolderMapping(id, req.body);
+      } catch (err: any) {
+        // Onbekende kolomsleutel (finding #9 fail-closed) → 400 i.p.v. 500.
+        return reply.code(400).send({ error: 'invalid_field', message: err.message });
+      }
       notifyStateChanged();
       return { ok: true };
     }
@@ -939,9 +970,9 @@ export async function createApiServer(): Promise<FastifyInstance> {
     }
   });
 
-  // Vul de blocked-subnet cache vóór we verbindingen accepteren, zodat de
-  // source-IP-gate meteen vanaf de eerste request werkt (geen fail-open venster).
-  await refreshBlockedSubnets();
+  // Initialiseer (en log, indien gegenereerd) het operator-token vóór listen,
+  // zodat de operator meteen weet waarmee in te loggen.
+  getOperatorToken();
 
   const address = await app.listen({ port: API_PORT, host: '0.0.0.0' });
   console.log(`[api] listening on ${address}`);

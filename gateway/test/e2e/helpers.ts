@@ -40,10 +40,16 @@ export function containerRunning(name: string): boolean {
 }
 
 // ── Huddle management API (admin, vanaf de host op :3000) ────────────────────
+// De API eist een operator-token (auth.ts); geef de gateway-onder-test hetzelfde
+// token via HUDDLE_OPERATOR_TOKEN, dan authenticeren de helpers daarmee.
 async function api(method: string, path: string, body?: unknown): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const token = process.env.HUDDLE_OPERATOR_TOKEN?.trim();
+  if (token) headers['authorization'] = `Bearer ${token}`;
   const res = await fetch(`${HUDDLE_URL}${path}`, {
     method,
-    headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -55,8 +61,34 @@ async function api(method: string, path: string, body?: unknown): Promise<any> {
   return parsed;
 }
 
+// Pre-flight voor de e2e-suite. Gooit met een gerichte melding zodat een
+// misconfiguratie niet verdwijnt achter een generiek "niet bereikbaar":
+//   - stack down / verkeerde URL  → "niet bereikbaar"
+//   - token ontbreekt of fout     → "401 … zet HUDDLE_OPERATOR_TOKEN"
+export async function assertHuddleReachable(): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${HUDDLE_URL}/api/rules`, {
+      headers: process.env.HUDDLE_OPERATOR_TOKEN?.trim()
+        ? { authorization: `Bearer ${process.env.HUDDLE_OPERATOR_TOKEN.trim()}` }
+        : {},
+    });
+  } catch (err) {
+    throw new Error(`huddle-API niet bereikbaar op ${HUDDLE_URL} — draait de stack? (${(err as Error).message})`);
+  }
+  if (res.status === 401) {
+    throw new Error(
+      `huddle-API antwoordt maar weigert auth (401): zet HUDDLE_OPERATOR_TOKEN op het token ` +
+      `waarmee de gateway-onder-test gestart is (CI genereert er één in de Start Huddle-stap).`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`huddle-API pre-flight faalde: GET /api/rules → ${res.status}`);
+  }
+}
+
 export async function huddleReachable(): Promise<boolean> {
-  try { await api('GET', '/api/rules'); return true; } catch { return false; }
+  try { await assertHuddleReachable(); return true; } catch { return false; }
 }
 
 export interface Rule { id: number; domain: string; container_id: string | null; status: string; }
@@ -83,6 +115,26 @@ export async function allowDomain(domain: string, container: string): Promise<vo
   } else {
     await api('POST', '/api/rules', { domain, container_id: container, status: 'allow' });
   }
+}
+
+// Maak een verse rule aan (globaal tenzij container gegeven) en geef het id terug.
+export async function createRule(
+  domain: string,
+  status: 'allow' | 'deny' | 'requested',
+  opts: { container?: string | null; path_pattern?: string | null } = {},
+): Promise<number> {
+  const r = await api('POST', '/api/rules', {
+    domain, status,
+    container_id: opts.container ?? null,
+    path_pattern: opts.path_pattern ?? null,
+  });
+  return r.id as number;
+}
+
+// Zet een host-only regel in pad-allowlist modus (kaal domein dicht, subpaden
+// afzonderlijk goed te keuren).
+export async function enablePathMode(ruleId: number): Promise<void> {
+  await api('POST', `/api/rules/${ruleId}/path-mode`, { enabled: true });
 }
 
 export async function setGrant(container: string, minutes: number): Promise<void> {

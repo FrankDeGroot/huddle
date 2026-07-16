@@ -8,6 +8,20 @@ export interface ContainerRuntime {
   socketPath: string;
   /** Name of the default bridge network ('bridge' for Docker, 'podman' for Podman). */
   defaultNetwork: string;
+  /**
+   * Draait de engine in een VM (Podman machine, Docker Desktop) i.p.v. native op
+   * de host? Bepaalt of bind-sources zoals /tmp/dc-sockets in de VM aangemaakt
+   * moeten worden: Docker Desktop maakt een ontbrekende source zelf aan, Podman
+   * niet — dan moeten we hem via `podman machine ssh` in de VM aanmaken.
+   */
+  isRemote: boolean;
+  /**
+   * Extra `--security-opt` vlaggen voor de huddle-container. Rootless Podman
+   * geeft zijn socket een SELinux-label; zonder `label=disable` mag het
+   * (SELinux-confined) huddle-proces de socket niet benaderen. Docker heeft dit
+   * niet nodig (leeg).
+   */
+  securityOpts: string[];
 }
 
 function commandOutput(cmd: string): string | undefined {
@@ -23,6 +37,22 @@ function isAvailable(runtime: RuntimeName): boolean {
   return commandOutput(`${runtime} info`) !== undefined;
 }
 
+/**
+ * Bepaalt de ECHTE engine achter een commando, of undefined als de engine niet
+ * bereikbaar is. Vertrouw niet op de commandonaam: `docker` is vaak een
+ * symlink/shim naar Podman (podman-docker) en Podman emuleert dan zelfs
+ * `docker --version`. Podman's `info` kent daarentegen het veld
+ * Host.ServiceIsRemote; Docker's info-schema niet. Dat is een betrouwbaar
+ * onderscheid dat ook via de shim werkt.
+ */
+function detectEngine(command: RuntimeName): RuntimeName | undefined {
+  if (commandOutput(`${command} info --format "{{.Host.ServiceIsRemote}}"`) !== undefined) {
+    return 'podman';
+  }
+  if (isAvailable(command)) return 'docker';
+  return undefined;
+}
+
 function podmanSocketPath(): string {
   // Podman knows where its own (rootless or rootful) socket lives.
   const reported = commandOutput(`podman info --format "{{.Host.RemoteSocket.Path}}"`);
@@ -36,13 +66,31 @@ function dockerSocketPath(): string {
   return process.platform === 'win32' ? '//var/run/docker.sock' : '/var/run/docker.sock';
 }
 
+function podmanIsRemote(): boolean {
+  // Op macOS/Windows draait Podman altijd in een `podman machine`-VM; ook op
+  // Linux kan de client op een remote socket wijzen. `ServiceIsRemote` is de
+  // gezaghebbende bron.
+  return commandOutput(`podman info --format "{{.Host.ServiceIsRemote}}"`) === 'true';
+}
+
 function buildRuntime(name: RuntimeName): ContainerRuntime {
   if (name === 'podman') {
-    return { name, socketPath: podmanSocketPath(), defaultNetwork: 'podman' };
+    return {
+      name,
+      socketPath: podmanSocketPath(),
+      defaultNetwork: 'podman',
+      isRemote: podmanIsRemote(),
+      securityOpts: ['label=disable'],
+    };
   }
-  // wslc speaks the Docker CLI and exposes a Docker-compatible socket, so it
-  // shares Docker's socket path and default bridge network.
-  return { name, socketPath: dockerSocketPath(), defaultNetwork: 'bridge' };
+  return {
+    name,
+    socketPath: dockerSocketPath(),
+    defaultNetwork: 'bridge',
+    // Docker Desktop (macOS/Windows) draait in een VM; native Docker op Linux niet.
+    isRemote: process.platform !== 'linux',
+    securityOpts: [],
+  };
 }
 
 export function parseRuntimeName(value: string): RuntimeName {
@@ -66,9 +114,11 @@ export function resolveRuntime(explicit?: string): ContainerRuntime {
     return buildRuntime(name);
   }
 
-  if (isAvailable('docker')) return buildRuntime('docker');
-  if (isAvailable('podman')) return buildRuntime('podman');
-  if (isAvailable('wslc')) return buildRuntime('wslc');
+  // Auto-detectie: kijk eerst achter het `docker`-commando (dat een Podman-shim
+  // kan zijn), daarna naar `podman`. Zo wint een echte Docker-engine als die er
+  // is, maar herkennen we Podman ook als het zich als `docker` voordoet.
+  const detected = detectEngine('docker') ?? detectEngine('podman') ?? detectEngine('wslc');
+  if (detected) return buildRuntime(detected);
 
   throw new Error(
     'No working container runtime found. Install and start Docker, Podman or wslc,\n' +
