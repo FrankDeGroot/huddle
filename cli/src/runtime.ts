@@ -33,8 +33,11 @@ function commandOutput(cmd: string): string | undefined {
 }
 
 function isAvailable(runtime: RuntimeName): boolean {
-  // 'info' only succeeds if the daemon/machine is actually reachable.
-  return commandOutput(`${runtime} info`) !== undefined;
+  // 'info' only succeeds if the daemon/machine is actually reachable. wslc has
+  // no 'info' subcommand at all (it exits with "Unrecognized command"), so use
+  // 'list' there instead — it equally requires a reachable daemon to succeed.
+  const probe = runtime === 'wslc' ? 'list' : 'info';
+  return commandOutput(`${runtime} ${probe}`) !== undefined;
 }
 
 /**
@@ -49,7 +52,7 @@ function detectEngine(command: RuntimeName): RuntimeName | undefined {
   if (commandOutput(`${command} info --format "{{.Host.ServiceIsRemote}}"`) !== undefined) {
     return 'podman';
   }
-  if (isAvailable(command)) return 'docker';
+  if (isAvailable(command)) return command;
   return undefined;
 }
 
