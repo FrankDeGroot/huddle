@@ -136,6 +136,28 @@
                     (click)="toggleAction(a)"></button>
           </div>
         }
+
+        <!-- Volume-mount kinds live under the Volumes card: they're enforced at
+             container-create (no timer), so they belong with the always-allowed
+             volume rights rather than in their own section. -->
+        @if (group.group === 'volumes' && mountActions().length) {
+          <div class="da-mounts-head">
+            <span>Volume mounts</span>
+            <small>Kinds a spawned container may mount · enforced at create, no timer</small>
+          </div>
+          @for (a of mountActions(); track a.action) {
+            <div class="da-row da-mrow" [class.is-off]="!isEnabled(a)" [class.is-danger]="a.action === 'mount.bind'">
+              <svg class="da-ic"><use [attr.href]="'#da-' + actionIcon(a.action)"/></svg>
+              <span class="da-mrow__text">
+                <span class="da-mrow__label">{{ a.label }}</span>
+                <small>{{ mountHint(a.action) }}</small>
+              </span>
+              <button class="da-toggle" type="button" [class.on]="isEnabled(a)"
+                      [attr.aria-pressed]="isEnabled(a)" [attr.aria-label]="a.label + (isEnabled(a) ? ' allowed' : ' blocked')"
+                      (click)="toggleAction(a)"></button>
+            </div>
+          }
+        }
       </article>
     }
   </div>
@@ -165,7 +187,7 @@
 
   <div class="da-notice">
     <svg class="da-ic"><use href="#da-shield"/></svg>
-    <span>These actions are safe to always allow and do not affect the environment.</span>
+    <span>The read-only actions are safe to always allow and do not affect the environment. Volume-mount kinds under Volumes are enforced when a spawned container is created — keep bind mounts off unless a container genuinely needs host access; they are the main sandbox-escape vector. Volumes that bind-back a host path via an inline driver are always rejected, regardless of these toggles.</span>
   </div>
 </section>
 
@@ -201,8 +223,10 @@
         internet traffic also passes through the egress firewall.
       </li>
       <li>
-        Dangerous settings are rejected: privileged containers, bind mounts from the host,
-        host namespaces (PID/IPC/UTS/userns/cgroup), extra capabilities, and disabled seccomp or AppArmor.
+        Dangerous settings are rejected: privileged containers, host namespaces
+        (PID/IPC/UTS/userns/cgroup), extra capabilities, and disabled seccomp or AppArmor.
+        Volume mounts are gated per kind under Volumes and off by default — host-path binds are the
+        main escape vector, but named and anonymous volumes stay off until you enable them too.
         Binding host ports is only possible after approval in the port list.
       </li>
       <li>

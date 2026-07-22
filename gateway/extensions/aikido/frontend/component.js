@@ -402,16 +402,16 @@
     <div class="modal-backdrop" id="ws-modal">
       <div class="modal">
         <div class="modal__head">
-          <h2 id="ws-modal-title">Workspace toevoegen</h2>
+          <h2 id="ws-modal-title">Add workspace</h2>
           <button class="modal__close" data-close="ws-modal">×</button>
         </div>
         <div class="modal__body">
-          <div class="field"><label>Naam *</label><input id="f-name" placeholder="mijn-workspace" /></div>
+          <div class="field"><label>Name *</label><input id="f-name" placeholder="my-workspace" /></div>
           <div class="field"><label>Env prefix *</label><input id="f-prefix" placeholder="AIKIDO_WGK" /></div>
-          <div class="field"><label>Repo pad *</label><input id="f-path" placeholder="/workspaces/project" /></div>
+          <div class="field"><label>Repository path *</label><input id="f-path" placeholder="/workspaces/project" /></div>
           <div class="field"><label>Workspace ID *</label><input id="f-wsid" placeholder="ws-abc123" /></div>
           <div class="field">
-            <label>Taal *</label>
+            <label>Language *</label>
             <select id="f-lang">
               <option value="java">Java</option>
               <option value="typescript">TypeScript</option>
@@ -421,12 +421,12 @@
               <option value="go">Go</option>
             </select>
           </div>
-          <div class="field"><label>Repository naam</label><input id="f-repo" placeholder="org/repo (optioneel)" /></div>
+          <div class="field"><label>Repository name</label><input id="f-repo" placeholder="org/repo (optional)" /></div>
           <div id="ws-msg"></div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" data-close="ws-modal">Annuleer</button>
-          <button class="btn btn--primary" id="ws-save">Opslaan</button>
+          <button class="btn btn--ghost" data-close="ws-modal">Cancel</button>
+          <button class="btn btn--primary" id="ws-save">Save</button>
         </div>
       </div>
     </div>
@@ -439,13 +439,13 @@
           <button class="modal__close" data-close="apikey-modal">×</button>
         </div>
         <div class="modal__body">
-          <div class="alert info">Persoonlijke toegangstoken uit Aikido via <b>Instellingen → Integraties → IDE → MCP</b>. Geldt voor alle workspaces.</div>
-          <div class="field"><label>API Key</label><input id="ak-key" type="password" placeholder="Laat leeg om ongewijzigd te laten" /></div>
+          <div class="alert info">Personal access token from Aikido via <b>Settings → Integrations → IDE → MCP</b>. Applies to all workspaces.</div>
+          <div class="field"><label>API Key</label><input id="ak-key" type="password" placeholder="Leave blank to keep unchanged" /></div>
           <div id="apikey-msg"></div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" data-close="apikey-modal">Annuleer</button>
-          <button class="btn btn--primary" id="apikey-save">Opslaan</button>
+          <button class="btn btn--ghost" data-close="apikey-modal">Cancel</button>
+          <button class="btn btn--primary" id="apikey-save">Save</button>
         </div>
       </div>
     </div>
@@ -458,15 +458,15 @@
           <button class="modal__close" data-close="cred-modal">×</button>
         </div>
         <div class="modal__body">
-          <div class="alert info">Maak een OAuth2-app aan in Aikido via <b>Instellingen → API</b>.</div>
+          <div class="alert info">Create an OAuth2 app in Aikido via <b>Settings → API</b>.</div>
           <div class="field"><label>Client ID</label><input id="c-id" placeholder="aikido_…" /></div>
           <div class="field"><label>Client Secret</label><input id="c-secret" type="password" placeholder="••••••••" /></div>
           <div id="cred-msg"></div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--danger btn--sm" id="cred-del">Verwijder</button>
-          <button class="btn btn--ghost" data-close="cred-modal">Annuleer</button>
-          <button class="btn btn--primary" id="cred-save">Opslaan &amp; valideren</button>
+          <button class="btn btn--danger btn--sm" id="cred-del">Delete</button>
+          <button class="btn btn--ghost" data-close="cred-modal">Cancel</button>
+          <button class="btn btn--primary" id="cred-save">Save &amp; validate</button>
         </div>
       </div>
     </div>
@@ -555,7 +555,7 @@
       if (s.view === 'issues' && s.selectedWs) {
         // Direct-link via URL: load workspaces + issues together
         this._renderView();
-        this._renderMain('<div class="loading"><div class="spinner"></div>Laden…</div>');
+        this._renderMain('<div class="loading"><div class="spinner"></div>Loading…</div>');
         try {
           s.workspaces = await this.api('GET', '/workspaces');
           this._renderView();
@@ -570,17 +570,17 @@
             this._renderView();
             setTimeout(() => this._openCreds(), 100);
           } else {
-            this._renderMain(`<div style="padding:24px;color:var(--danger)">Fout: ${this.esc(e.message)}</div>`);
+            this._renderMain(`<div style="padding:24px;color:var(--danger)">Error: ${this.esc(e.message)}</div>`);
           }
         }
       } else {
-        this._renderMain('<div class="loading"><div class="spinner"></div>Repositories laden…</div>');
+        this._renderMain('<div class="loading"><div class="spinner"></div>Loading repositories…</div>');
         try {
           s.workspaces = await this.api('GET', '/workspaces');
           this._renderView();
           this.api('GET', '/overview').then(ov => { s.overview = ov; this._renderView(); }).catch(e => { console.error('Failed to load overview data:', e); });
         } catch (e) {
-          this._renderMain(`<div style="padding:24px;color:var(--danger)">Fout: ${this.esc(e.message)}</div>`);
+          this._renderMain(`<div style="padding:24px;color:var(--danger)">Error: ${this.esc(e.message)}</div>`);
         }
       }
     }
@@ -604,9 +604,9 @@
       } else {
         tbWs.textContent = s.selectedWs; tbSep.style.display = '';
         tbR.innerHTML = `
-          <button class="btn btn--sm btn--ghost" id="tb-refresh">↻ Vernieuwen</button>
+          <button class="btn btn--sm btn--ghost" id="tb-refresh">↻ Refresh</button>
           <button class="btn btn--sm" id="tb-creds">Credentials</button>
-          <button class="btn btn--sm btn--ghost" id="tb-back">← Terug</button>`;
+          <button class="btn btn--sm btn--ghost" id="tb-back">← Back</button>`;
         tbR.querySelector('#tb-refresh').onclick = () => this._refreshIssues();
         tbR.querySelector('#tb-creds').onclick = () => this._openCreds();
         tbR.querySelector('#tb-back').onclick = () => this._backToWs();
@@ -624,9 +624,9 @@
           <div class="ws-view">
             <div class="empty-state">
               <div class="empty-state__icon">🔒</div>
-              <h3>Geen workspaces</h3>
-              <p>Voeg een workspace toe om security-issues te bekijken.</p>
-              <button class="btn btn--primary" id="add-first">+ Repository toevoegen</button>
+              <h3>No workspaces</h3>
+              <p>Add a workspace to view security issues.</p>
+              <button class="btn btn--primary" id="add-first">+ Add repository</button>
             </div>
           </div>`);
         this.$('#add-first')?.addEventListener('click', () => this._openAddWs());
@@ -646,7 +646,7 @@
           const s    = overview[ws.name];
           const cls  = s?.critical ? 'has-critical' : s?.high ? 'has-high' : '';
           const cCls = ws.hasCredentials ? 'ok' : 'missing';
-          const cLbl = ws.hasCredentials ? 'credentials' : 'geen credentials';
+          const cLbl = ws.hasCredentials ? 'credentials' : 'no credentials';
 
           let statsHtml = '';
           if (s) {
@@ -654,10 +654,10 @@
               <div class="ws-card__stats">
                 <div class="ws-stat"><span class="ws-stat__n critical">${s.critical}</span><span class="ws-stat__l">critical</span></div>
                 <div class="ws-stat"><span class="ws-stat__n high">${s.high}</span><span class="ws-stat__l">high</span></div>
-                <div class="ws-stat"><span class="ws-stat__n total">${s.total}</span><span class="ws-stat__l">totaal</span></div>
+                <div class="ws-stat"><span class="ws-stat__n total">${s.total}</span><span class="ws-stat__l">total</span></div>
               </div>`;
           } else if (ws.hasCredentials) {
-            statsHtml = `<div class="loading-mini"><div class="spinner" style="width:11px;height:11px"></div> Laden…</div>`;
+            statsHtml = `<div class="loading-mini"><div class="spinner" style="width:11px;height:11px"></div> Loading…</div>`;
           }
 
           return `
@@ -671,7 +671,7 @@
                 <span class="ws-card__cred ${cCls}">
                   <span class="dot"></span>${cLbl}
                 </span>
-                <button class="ws-card__edit" data-edit="${this.esc(ws.name)}" title="Bewerken">⋯</button>
+                <button class="ws-card__edit" data-edit="${this.esc(ws.name)}" title="Edit">⋯</button>
               </div>
             </div>`;
         }).join('');
@@ -704,7 +704,7 @@
       // Repo meta
       const ws = s.workspaces.find(w => w.name === s.selectedWs);
       const cCls = ws?.hasCredentials ? 'ok' : 'missing';
-      const cLbl = ws?.hasCredentials ? 'credentials' : 'geen credentials';
+      const cLbl = ws?.hasCredentials ? 'credentials' : 'no credentials';
 
       // Severity counts
       const cnt = { critical: 0, high: 0, medium: 0, low: 0 };
@@ -724,7 +724,7 @@
           <div class="repo-header__stats">
             <div class="rstat"><span class="rstat__n critical">${cnt.critical}</span><span class="rstat__l">critical</span></div>
             <div class="rstat"><span class="rstat__n high">${cnt.high}</span><span class="rstat__l">high</span></div>
-            <div class="rstat"><span class="rstat__n total">${s.issues.length}</span><span class="rstat__l">totaal</span></div>
+            <div class="rstat"><span class="rstat__n total">${s.issues.length}</span><span class="rstat__l">total</span></div>
           </div>` : ''}
         </div>`;
 
@@ -735,10 +735,10 @@
       const selCount = selected.size;
       const batchBar = selCount ? `
         <div class="batch-bar">
-          <span class="batch-bar__count">${selCount} geselecteerd</span>
+          <span class="batch-bar__count">${selCount} selected</span>
           <div class="batch-bar__space"></div>
-          <button class="btn btn--sm btn--ghost" id="clear-sel">Deselecteer</button>
-          <button class="btn btn--sm btn--primary" id="fix-sel">▶ Fix selectie</button>
+          <button class="btn btn--sm btn--ghost" id="clear-sel">Deselect</button>
+          <button class="btn btn--sm btn--primary" id="fix-sel">▶ Fix selection</button>
         </div>` : '';
 
       const arrow = col => sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -748,12 +748,12 @@
           ${repoHeader}
           <div class="issues-toolbar">
             <div class="sev-filter">
-              <button class="sev-btn all ${!sevFilter ? 'active' : ''}" data-sev="">alle <b>${s.issues.length}</b></button>
+              <button class="sev-btn all ${!sevFilter ? 'active' : ''}" data-sev="">all <b>${s.issues.length}</b></button>
               ${sevBtns}
             </div>
             <div class="search-box">
               <span style="color:var(--text-dim)">⌕</span>
-              <input id="search-inp" placeholder="Zoek op titel of CVE…" value="${this.esc(search)}" />
+              <input id="search-inp" placeholder="Search by title or CVE…" value="${this.esc(search)}" />
             </div>
           </div>
           ${batchBar}
@@ -762,7 +762,7 @@
               <thead><tr>
                 <th class="col-check"><input type="checkbox" id="chk-all" /></th>
                 <th data-sort="severity">Severity${arrow('severity')}</th>
-                <th data-sort="title">Titel${arrow('title')}</th>
+                <th data-sort="title">Title${arrow('title')}</th>
                 <th>CVE</th>
                 <th class="col-score" data-sort="severity_score">Score${arrow('severity_score')}</th>
                 <th class="col-act"></th>
@@ -817,8 +817,8 @@
         <tr><td colspan="6">
           <div class="empty-state" style="padding:40px 20px">
             <div class="empty-state__icon">✅</div>
-            <h3>Geen issues gevonden</h3>
-            <p>Geen security-issues${sevFilter || search ? ' voor dit filter' : ''}.</p>
+            <h3>No issues found</h3>
+            <p>No security issues${sevFilter || search ? ' for this filter' : ''}.</p>
           </div>
         </td></tr>`;
 
@@ -836,9 +836,9 @@
       let footer = this.$('.table-footer');
       if (hasPrev || hasMore) {
         const footerHtml = `
-          <button class="btn btn--sm btn--ghost" id="pg-prev" ${hasPrev ? '' : 'disabled'}>← Vorige</button>
-          <span>Pagina ${page + 1} · ${Math.min(start + perPage, filteredTotal)} van ${filteredTotal}</span>
-          <button class="btn btn--sm btn--ghost" id="pg-next" ${hasMore ? '' : 'disabled'}>Volgende →</button>`;
+          <button class="btn btn--sm btn--ghost" id="pg-prev" ${hasPrev ? '' : 'disabled'}>← Previous</button>
+          <span>Page ${page + 1} · ${Math.min(start + perPage, filteredTotal)} of ${filteredTotal}</span>
+          <button class="btn btn--sm btn--ghost" id="pg-next" ${hasMore ? '' : 'disabled'}>Next →</button>`;
         if (!footer) {
           footer = document.createElement('div');
           footer.className = 'table-footer';
@@ -943,7 +943,7 @@
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
               <span class="pill ${issue.severity}">${issue.severity}</span>
               ${issue.severity_score != null ? `<span class="detail-score ${issue.severity}">${issue.severity_score}</span>` : ''}
-              ${toFixCount > 1 ? `<span style="font-size:11.5px;color:var(--text-muted)">${toFixCount} issues geselecteerd</span>` : ''}
+              ${toFixCount > 1 ? `<span style="font-size:11.5px;color:var(--text-muted)">${toFixCount} issues selected</span>` : ''}
             </div>
             <h2 style="font-size:14px;font-weight:700;line-height:1.35;letter-spacing:-.01em">${this.esc(issue.title)}</h2>
           </div>
@@ -955,18 +955,18 @@
             ${cve        ? `<div class="detail-kv"><span class="detail-label">CVE</span><span class="detail-val mono detail-cve">${this.esc(cve)}</span></div>` : ''}
             ${issue.type ? `<div class="detail-kv"><span class="detail-label">Type</span><span class="detail-val">${this.esc(issue.type)}</span></div>` : ''}
             ${pkg        ? `<div class="detail-kv"><span class="detail-label">Package</span><span class="detail-val mono">${this.esc(pkg)}</span></div>` : ''}
-            ${fixVersion ? `<div class="detail-kv"><span class="detail-label">Fix in versie</span><span class="detail-val mono" style="color:var(--success)">${this.esc(fixVersion)}</span></div>` : ''}
-            ${locs       ? `<div class="detail-kv"><span class="detail-label">Locaties</span><span class="detail-val">${this.esc(locs)}</span></div>` : ''}
+            ${fixVersion ? `<div class="detail-kv"><span class="detail-label">Fixed in version</span><span class="detail-val mono" style="color:var(--success)">${this.esc(fixVersion)}</span></div>` : ''}
+            ${locs       ? `<div class="detail-kv"><span class="detail-label">Locations</span><span class="detail-val">${this.esc(locs)}</span></div>` : ''}
           </div>` : ''}
           ${issue.how_to_fix ? `
           <div class="detail-fix-box">
-            <span class="detail-label">Hoe te fixen</span>
+            <span class="detail-label">How to fix</span>
             <p>${this.esc(issue.how_to_fix)}</p>
           </div>` : ''}
         </div>
         <div class="modal__foot">
           <div id="inject-msg" style="flex:1;font-size:12.5px"></div>
-          <button class="btn btn--ghost" id="fix-cancel">Annuleren</button>
+          <button class="btn btn--ghost" id="fix-cancel">Cancel</button>
           <button class="btn btn--primary" id="do-fix">${btnLabel}</button>
         </div>`;
 
@@ -993,7 +993,7 @@
       if (aikidoImg?.name) return aikidoImg.name;
       const baseRes = await fetch('/api/docker/base-image?ide=vscode');
       const image   = baseRes.ok ? (await baseRes.json()).imageName : null;
-      if (!image) throw new Error('Geen Docker-image beschikbaar. Zorg dat de Aikido-image gebouwd is.');
+      if (!image) throw new Error('No Docker image available. Make sure the Aikido image has been built.');
       return image;
     }
 
@@ -1002,40 +1002,40 @@
       const isRunning = existing?.status?.startsWith('Up');
 
       if (existing && isRunning) {
-        setMsg(spinner(`Injecteren in bestaande container <b>${containerName}</b>…`));
+        setMsg(spinner(`Injecting into existing container <b>${containerName}</b>…`));
         await this.api('POST', `/workspaces/${encodeURIComponent(ws)}/inject`, {
           container_name: containerName, issues: toFix,
         });
-        setMsg(`<div class="alert ok">✓ Geïnjecteerd in bestaande container <b>${containerName}</b>. Voer <code>aikido-fix</code> uit in de container.</div>`);
+        setMsg(`<div class="alert ok">✓ Injected into existing container <b>${containerName}</b>. Run <code>aikido-fix</code> in the container.</div>`);
 
       } else if (existing && !isRunning) {
-        setMsg(spinner(`Container <b>${containerName}</b> hervatten…`));
+        setMsg(spinner(`Resuming container <b>${containerName}</b>…`));
         await fetch(`/api/docker/containers/${encodeURIComponent(containerName)}/start`, { method: 'POST' })
           .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); } });
-        setMsg(spinner(`Container geherstart, injecteren…`));
+        setMsg(spinner(`Container restarted, injecting…`));
         await new Promise(r => setTimeout(r, 1500));
         await this.api('POST', `/workspaces/${encodeURIComponent(ws)}/inject`, {
           container_name: containerName, issues: toFix,
         });
-        setMsg(`<div class="alert ok">✓ Container <b>${containerName}</b> hervat en geïnjecteerd. Voer <code>aikido-fix</code> uit in de container.</div>`);
+        setMsg(`<div class="alert ok">✓ Container <b>${containerName}</b> resumed and injected. Run <code>aikido-fix</code> in the container.</div>`);
 
       } else {
         const wsObj  = this._s.workspaces.find(w => w.name === ws);
         const wsPath = wsObj?.repo_path;
-        if (!wsPath) throw new Error('Geen repo-pad bekend voor deze workspace. Stel het in via de workspace-instellingen.');
-        setMsg(spinner(`Container <b>${containerName}</b> aanmaken…`));
+        if (!wsPath) throw new Error('No repo path known for this workspace. Set it via the workspace settings.');
+        setMsg(spinner(`Creating container <b>${containerName}</b>…`));
         await fetch('/api/docker/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageName: image, containerName, presentableName: `Aikido ${ws}`, workspaceDir: wsPath }),
         }).then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); } });
-        setMsg(spinner(`Container gestart, injecteren…`));
+        setMsg(spinner(`Container started, injecting…`));
         await new Promise(r => setTimeout(r, 2000));
         await this.api('POST', `/workspaces/${encodeURIComponent(ws)}/inject`, {
           container_name: containerName, issues: toFix,
         });
         await this._loadContainers();
-        setMsg(`<div class="alert ok">✓ Container <b>${containerName}</b> aangemaakt en geïnjecteerd. Voer <code>aikido-fix</code> uit in de container.</div>`);
+        setMsg(`<div class="alert ok">✓ Container <b>${containerName}</b> created and injected. Run <code>aikido-fix</code> in the container.</div>`);
       }
     }
 
@@ -1058,12 +1058,12 @@
         await this._loadContainers();
         const existing = s.containers.find(c => c.name === CONTAINER);
         const image = existing ? null : await (async () => {
-          setMsg(spinner(`Container <b>${CONTAINER}</b> bestaat niet — image ophalen…`));
+          setMsg(spinner(`Container <b>${CONTAINER}</b> does not exist — pulling image…`));
           return this._resolveImage(s.workspaces.find(w => w.name === s.selectedWs));
         })();
         await this._ensureContainerAndInject(s.selectedWs, image, CONTAINER, toFix, setMsg, spinner);
       } catch (e) {
-        setMsg(`<div class="alert err">Fout: ${this.esc(e.message)}</div>`);
+        setMsg(`<div class="alert err">Error: ${this.esc(e.message)}</div>`);
         if (fixBtn) fixBtn.disabled = false;
       }
     }
@@ -1080,7 +1080,7 @@
       s.page = 0; s.selected.clear(); s.search = '';
       s.sevFilter = null; s.openIssue = null;
       this._renderView();
-      this._renderMain('<div class="loading"><div class="spinner"></div>Issues laden…</div>');
+      this._renderMain('<div class="loading"><div class="spinner"></div>Loading issues…</div>');
       try {
         const data = await this.api('GET', `/workspaces/${encodeURIComponent(s.selectedWs)}/issues?per_page=1000`);
         s.issues = data.groups || [];
@@ -1093,7 +1093,7 @@
           this._renderView();
           setTimeout(() => this._openCreds(), 100);
         } else {
-          this._renderMain(`<div style="padding:24px;color:var(--danger)">Fout: ${this.esc(e.message)}</div>`);
+          this._renderMain(`<div style="padding:24px;color:var(--danger)">Error: ${this.esc(e.message)}</div>`);
         }
       }
     }
@@ -1113,7 +1113,7 @@
     _openAddWs () {
       const sr = this.shadowRoot;
       this._s.editingWs = null;
-      sr.getElementById('ws-modal-title').textContent = 'Workspace toevoegen';
+      sr.getElementById('ws-modal-title').textContent = 'Add workspace';
       ['f-name','f-prefix','f-path','f-wsid','f-repo'].forEach(id => { sr.getElementById(id).value = ''; sr.getElementById(id).disabled = false; });
       sr.getElementById('f-lang').value = 'java';
       sr.getElementById('ws-msg').innerHTML = '';
@@ -1125,7 +1125,7 @@
       if (!ws) return;
       const sr = this.shadowRoot;
       this._s.editingWs = ws;
-      sr.getElementById('ws-modal-title').textContent = `Bewerken — ${name}`;
+      sr.getElementById('ws-modal-title').textContent = `Edit — ${name}`;
       sr.getElementById('f-name').value = ws.name;
       sr.getElementById('f-name').disabled = true;
       sr.getElementById('f-prefix').value = ws.aikido_env_prefix;
@@ -1148,7 +1148,7 @@
       const msg    = sr.getElementById('ws-msg');
 
       if (!name || !prefix || !rpath || !wsid || !lang) {
-        msg.innerHTML = `<div class="alert err">Alle verplichte velden (*) zijn vereist.</div>`; return;
+        msg.innerHTML = `<div class="alert err">All required fields (*) are mandatory.</div>`; return;
       }
       const body = { name, aikido_env_prefix: prefix, repo_path: rpath, workspace_id: wsid, language: lang };
       if (repo) body.code_repo_name = repo;
@@ -1170,8 +1170,8 @@
       sr.getElementById('ak-key').value = '';
       sr.getElementById('apikey-msg').innerHTML = '';
       this.api('GET', '/settings/mcp-api-key').then(d => {
-        if (d.has_key) sr.getElementById('ak-key').placeholder = '(ingesteld — laat leeg om te bewaren)';
-        else sr.getElementById('ak-key').placeholder = 'Plak hier je PAT';
+        if (d.has_key) sr.getElementById('ak-key').placeholder = '(set — leave empty to keep)';
+        else sr.getElementById('ak-key').placeholder = 'Paste your PAT here';
       }).catch(() => {});
       this._openModal('apikey-modal');
     }
@@ -1183,7 +1183,7 @@
       if (!key) { this._closeModal('apikey-modal'); return; }
       try {
         await this.api('POST', '/settings/mcp-api-key', { api_key: key });
-        msg.innerHTML = `<div class="alert ok">✓ MCP API Key opgeslagen.</div>`;
+        msg.innerHTML = `<div class="alert ok">✓ MCP API Key saved.</div>`;
         setTimeout(() => this._closeModal('apikey-modal'), 1200);
       } catch (e) {
         msg.innerHTML = `<div class="alert err">${this.esc(e.message)}</div>`;
@@ -1214,12 +1214,12 @@
       const id  = sr.getElementById('c-id').value.trim();
       const sec = sr.getElementById('c-secret').value;
       const msg = sr.getElementById('cred-msg');
-      if (!id || !sec) { msg.innerHTML = `<div class="alert err">Client ID en Secret zijn verplicht.</div>`; return; }
+      if (!id || !sec) { msg.innerHTML = `<div class="alert err">Client ID and Secret are required.</div>`; return; }
       try {
         const res = await this.api('POST', `/credentials/${encodeURIComponent(this._s.credPrefix)}`, { client_id: id, client_secret: sec });
         msg.innerHTML = res.validated
-          ? `<div class="alert ok">✓ Opgeslagen en gevalideerd.</div>`
-          : `<div class="alert err">Opgeslagen, validatie mislukt: ${this.esc(res.validation_error)}</div>`;
+          ? `<div class="alert ok">✓ Saved and validated.</div>`
+          : `<div class="alert err">Saved, validation failed: ${this.esc(res.validation_error)}</div>`;
         this._s.workspaces = await this.api('GET', '/workspaces');
       } catch (e) {
         msg.innerHTML = `<div class="alert err">${this.esc(e.message)}</div>`;
@@ -1227,7 +1227,7 @@
     }
 
     async _deleteCreds () {
-      if (!confirm('Credentials verwijderen?')) return;
+      if (!confirm('Delete credentials?')) return;
       try {
         await this.api('DELETE', `/credentials/${encodeURIComponent(this._s.credPrefix)}`);
         this._closeModal('cred-modal');

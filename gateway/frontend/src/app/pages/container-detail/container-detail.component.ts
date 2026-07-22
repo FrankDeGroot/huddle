@@ -1,4 +1,5 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AsyncPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -14,7 +15,7 @@ import { buildPathDomains, excludePathModeRules } from '../../shared/components/
 import { ContainerTerminalComponent } from '../../shared/components/container-terminal/container-terminal.component';
 import { IconComponent } from '../../shared/components/icon/icon.component';
 import { DockerRightsPanelComponent } from '../../shared/components/docker-rights-panel/docker-rights-panel.component';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, skip } from 'rxjs';
 
 interface DetailData {
   inspect: any;
@@ -27,6 +28,14 @@ interface DetailData {
 type DetailTab = 'firewall' | 'docker' | 'noot' | 'terminal';
 type RulesTab  = 'allow' | 'deny' | 'path';
 
+/** A path sub-request row for the pending inbox flat list */
+interface PathRequestRow {
+  rule: Rule;
+  domain: string;
+  path_pattern: string;
+  last_path: string | null;
+}
+
 @Component({
   selector: 'app-container-detail',
   standalone: true,
@@ -38,6 +47,7 @@ export class ContainerDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(ApiService);
   private state = inject(StateService);
+  private destroyRef = inject(DestroyRef);
   modal = inject(ModalService);
 
   get nowTs(): number { return Math.floor(Date.now() / 1000); }
@@ -62,6 +72,62 @@ export class ContainerDetailComponent implements OnInit {
       { id: 'pathmode', label: 'Path allowlist', tone: 'neutral', icon: 'filter' },
     ],
   };
+
+  /** Pie for path sub-requests — same layout as the firewall inbox:
+   *  path-related actions on the left (0=top,1=right,2=bottom,3=left). */
+  readonly pieConfigPath: PieMenuConfig = {
+    families: [
+      { id: 'path-allow', label: 'Allow exact', tone: 'green', icon: 'approve' },
+      { id: 'path-later', label: 'Dismiss', tone: 'neutral', icon: 'later' },
+      { id: 'path-deny', label: 'Deny', tone: 'red', icon: 'deny' },
+      { id: 'path-prefix', label: 'Allow prefix/*', tone: 'blue', icon: 'filter' },
+    ],
+  };
+
+  /** Pending path sub-requests across this container's path-mode domains
+   *  (container-scoped + global markers), flattened for the inbox — mirrors
+   *  the firewall view's pathRequested list. */
+  pathRequests(rules: Rule[], globalRules: Rule[]): PathRequestRow[] {
+    const domains = [...buildPathDomains(rules), ...buildPathDomains(globalRules)];
+    return domains.flatMap(pd =>
+      pd.requested
+        .filter(r => !!r.path_pattern)
+        .map(r => ({
+          rule: r,
+          domain: pd.domain,
+          path_pattern: r.path_pattern!,
+          last_path: (r as any).last_path ?? null,
+        })),
+    );
+  }
+
+  onPathPieAction(actionId: string, row: PathRequestRow): void {
+    const { rule } = row;
+    switch (actionId) {
+      case 'path-allow':
+        this.api.resolveRule(rule.id, 'allow', 'rule', undefined, row.path_pattern)
+          .subscribe(() => this.reload());
+        break;
+      case 'path-prefix': {
+        const prefix = this.toPrefix(row.path_pattern);
+        this.api.resolveRule(rule.id, 'allow', 'rule', undefined, prefix)
+          .subscribe(() => this.reload());
+        break;
+      }
+      case 'path-deny':
+        this.api.resolveRule(rule.id, 'deny', 'rule', undefined, row.path_pattern)
+          .subscribe(() => this.reload());
+        break;
+      case 'path-later':
+        this.deleteRule(rule);
+        break;
+    }
+  }
+
+  private toPrefix(path: string): string {
+    const parts = path.replace(/\/+$/, '').split('/');
+    return parts.slice(0, -1).join('/') + '/*';
+  }
 
   onPieAction(actionId: string, rule: Rule): void {
     switch (actionId) {
@@ -108,6 +174,18 @@ export class ContainerDetailComponent implements OnInit {
     this.name = this.route.snapshot.paramMap.get('name') ?? '';
     this.load();
     this.loadPorts();
+    // Deze pagina toont zijn eigen detail$ (getContainerDetail), los van de
+    // globale state.rules$. Zonder deze koppeling verscheen een nieuw firewall-
+    // request pas na een handmatige refresh. rules$ wordt door de WS, de
+    // voorgrond-poll (StateService) én elke allow/deny (incl. de gedeelde "For
+    // everyone"-bevestigingsmodal, die state.loadAll() aanroept) ververst;
+    // herlaad het lokale detail daarop mee.
+    // skip(1): de BehaviorSubject vuurt meteen bij subscribe — die eerste emit
+    // dekt de load() hierboven al, dus alleen latere wijzigingen triggeren een
+    // herlaad.
+    this.state.rules$
+      .pipe(skip(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => { if (this.name) this.load(); });
     this.api.getContainerCredentials(this.name).subscribe({
       next: (c) => this.credentials = c,
       error: () => this.credentials = null,

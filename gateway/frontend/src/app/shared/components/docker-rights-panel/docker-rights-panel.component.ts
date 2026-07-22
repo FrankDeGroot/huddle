@@ -11,6 +11,7 @@ interface GroupMeta {
   iconId: string;
   tempSubtitle: string;
   alwaysSubtitle: string;
+  mountSubtitle?: string;
 }
 
 interface ActionGroupVm {
@@ -22,7 +23,7 @@ interface ActionGroupVm {
   actions: DockerActionDef[];
 }
 
-const GROUP_ORDER: DockerActionGroup[] = ['containers', 'images', 'volumes', 'networks', 'system'];
+const GROUP_ORDER: DockerActionGroup[] = ['containers', 'images', 'volumes', 'networks', 'system', 'mounts'];
 
 const GROUP_META: Record<DockerActionGroup, GroupMeta> = {
   containers: {
@@ -44,6 +45,12 @@ const GROUP_META: Record<DockerActionGroup, GroupMeta> = {
   system: {
     title: 'System', colorClass: 'ic-gray', iconId: 'gear',
     tempSubtitle: 'System information and status.', alwaysSubtitle: 'System information and status.',
+  },
+  mounts: {
+    title: 'Volume mounts', colorClass: 'ic-blue', iconId: 'db',
+    tempSubtitle: 'Volume mounts for spawned containers.',
+    alwaysSubtitle: 'Volume mounts for spawned containers.',
+    mountSubtitle: 'Which volume kinds spawned containers may mount.',
   },
 };
 
@@ -80,6 +87,9 @@ const ACTION_ICONS: Record<string, string> = {
   'system.ping': 'activity',
   'system.version': 'search',
   'system.events': 'bell',
+  'mount.bind': 'link',
+  'mount.named': 'db',
+  'mount.anonymous': 'cube',
 };
 
 const DURATION_STORE_PREFIX = 'huddle.dockerActions.duration.';
@@ -135,6 +145,8 @@ export class DockerRightsPanelComponent implements OnInit {
   temporaryGroups = computed(() => this.buildGroups('temporary'));
   alwaysGroups = computed(() => this.buildGroups('always').filter(g => g.group !== 'system'));
   systemGroup = computed(() => this.buildGroups('always').find(g => g.group === 'system') ?? null);
+  /** Mount-kind gates, rendered as a sub-group inside the always-allowed Volumes card. */
+  mountActions = computed(() => this.catalog().filter(a => a.kind === 'mount'));
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
@@ -241,6 +253,16 @@ export class DockerRightsPanelComponent implements OnInit {
     return ACTION_ICONS[action] ?? 'gear';
   }
 
+  private readonly mountHints: Record<string, string> = {
+    'mount.bind': 'Host-path binds — can read/write the host. Main escape vector.',
+    'mount.named': 'Isolated Docker volumes, labelled to this devcontainer.',
+    'mount.anonymous': 'Fresh source-less volumes. Never touch the host.',
+  };
+
+  mountHint(action: string): string {
+    return this.mountHints[action] ?? '';
+  }
+
   private buildGroups(kind: DockerActionKind): ActionGroupVm[] {
     const actions = this.catalog().filter(a => a.kind === kind);
     const groups: ActionGroupVm[] = [];
@@ -248,10 +270,13 @@ export class DockerRightsPanelComponent implements OnInit {
       const groupActions = actions.filter(a => a.group === group);
       if (groupActions.length === 0) continue;
       const meta = GROUP_META[group];
+      const subtitle = kind === 'temporary' ? meta.tempSubtitle
+        : kind === 'mount' ? (meta.mountSubtitle ?? meta.alwaysSubtitle)
+        : meta.alwaysSubtitle;
       groups.push({
         group,
         title: meta.title,
-        subtitle: kind === 'temporary' ? meta.tempSubtitle : meta.alwaysSubtitle,
+        subtitle,
         colorClass: meta.colorClass,
         iconId: meta.iconId,
         actions: groupActions,

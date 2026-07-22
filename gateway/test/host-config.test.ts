@@ -17,9 +17,12 @@ const { validateHostConfig, validateVolumeCreate } = await import('../src/socket
 
 describe('validateHostConfig', () => {
   it('staat een onschuldige config toe', () => {
+    // Volume-mount-soorten staan standaard uit; test de shape-acceptatie met de
+    // bijbehorende toggle aan.
+    const allowVols = { bind: false, named: true, anonymous: true };
     expect(validateHostConfig({})).toBeNull();
-    expect(validateHostConfig({ Binds: ['myvol:/data'] })).toBeNull();
-    expect(validateHostConfig({ Mounts: [{ Type: 'volume', Source: 'myvol', Target: '/data' }] })).toBeNull();
+    expect(validateHostConfig({ Binds: ['myvol:/data'] }, allowVols)).toBeNull();
+    expect(validateHostConfig({ Mounts: [{ Type: 'volume', Source: 'myvol', Target: '/data' }] }, allowVols)).toBeNull();
   });
 
   it('weigert de klassieke escape-vectoren', () => {
@@ -93,10 +96,49 @@ describe('validateHostConfig', () => {
       expect(validateHostConfig({
         NetworkMode: 'bridge', Memory: 536870912, CpuQuota: 200000, CpuPeriod: 100000,
         RestartPolicy: { Name: 'unless-stopped' }, Mounts: [{ Type: 'volume', Source: 'data', Target: '/data' }],
-      })).toBeNull();
+      }, { bind: false, named: true, anonymous: true })).toBeNull();
     } finally {
       delete process.env.HUDDLE_HOSTCONFIG_ENFORCE;
     }
+  });
+});
+
+describe('validateHostConfig — mount permissions', () => {
+  const allowAll = { bind: true, named: true, anonymous: true };
+  const denyAll  = { bind: false, named: false, anonymous: false };
+
+  it('defaults: alle mount-soorten geweigerd (secure by default)', () => {
+    expect(validateHostConfig({ Binds: ['/host:/data'] })).toMatch(/host-path bind/i);
+    expect(validateHostConfig({ Binds: ['myvol:/data'] })).toMatch(/named volume/i);
+    expect(validateHostConfig({ Binds: ['/data'] })).toMatch(/anonymous volume/i); // anonymous (no source)
+    expect(validateHostConfig({ Mounts: [{ Type: 'volume', Target: '/x' }] })).toMatch(/anonymous volume/i); // anonymous
+  });
+
+  it('bind toggle gates host-path binds (both Binds and Mounts)', () => {
+    expect(validateHostConfig({ Binds: ['/host:/data'] }, allowAll)).toBeNull();
+    expect(validateHostConfig({ Mounts: [{ Type: 'bind', Source: '/', Target: '/host' }] }, allowAll)).toBeNull();
+    expect(validateHostConfig({ Binds: ['/host:/data'] }, denyAll)).toMatch(/host-path bind/i);
+    expect(validateHostConfig({ Mounts: [{ Type: 'bind', Source: '/', Target: '/host' }] }, denyAll)).toMatch(/bind-type/i);
+  });
+
+  it('named toggle gates named volumes', () => {
+    const perms = { bind: false, named: false, anonymous: true };
+    expect(validateHostConfig({ Binds: ['myvol:/data'] }, perms)).toMatch(/named volume/i);
+    expect(validateHostConfig({ Mounts: [{ Type: 'volume', Source: 'myvol', Target: '/x' }] }, perms)).toMatch(/named volume/i);
+  });
+
+  it('anonymous toggle gates source-less volumes', () => {
+    const perms = { bind: false, named: true, anonymous: false };
+    expect(validateHostConfig({ Binds: ['/data'] }, perms)).toMatch(/anonymous volume/i);
+    expect(validateHostConfig({ Mounts: [{ Type: 'volume', Target: '/x' }] }, perms)).toMatch(/anonymous volume/i);
+    // named still passes
+    expect(validateHostConfig({ Binds: ['myvol:/data'] }, perms)).toBeNull();
+  });
+
+  it('DriverConfig volumes are always denied, even with all mounts allowed', () => {
+    expect(validateHostConfig({
+      Mounts: [{ Type: 'volume', Target: '/host', VolumeOptions: { DriverConfig: { Name: 'local' } } }],
+    }, allowAll)).toMatch(/driverconfig not permitted/i);
   });
 });
 

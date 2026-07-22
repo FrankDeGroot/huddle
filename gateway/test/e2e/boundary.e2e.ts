@@ -103,8 +103,11 @@ describe.skipIf(!E2E_ENABLED)('live security boundary', () => {
     describe.concurrent('escape-pogingen met actieve grant', () => {
       beforeAll(async () => {
         // Toggles aan die de escape-pogingen nodig hebben om überhaupt bij de
-        // harde security-checks (HostConfig/ownership) aan te komen.
-        for (const action of ['system.ping', 'container.create', 'container.start', 'container.inspect', 'volume.create']) {
+        // harde security-checks (HostConfig/ownership) aan te komen. 'mount.named'
+        // hoort erbij: mount-soorten staan secure-by-default uit, dus zonder deze
+        // toggle weigert validateHostConfig een named-volume-mount al vóór de
+        // ownership-check en test #8 (andermans volume) haalt die check nooit.
+        for (const action of ['system.ping', 'container.create', 'container.start', 'container.inspect', 'volume.create', 'mount.named']) {
           await setActionPolicy(E2E_NAME, action, true);
         }
         await setGrant(E2E_NAME, 15);
@@ -223,6 +226,41 @@ describe.skipIf(!E2E_ENABLED)('live security boundary', () => {
       // Traversal buiten /foo/ → door Huddle geblokkeerd (403), niet doorgestuurd.
       expect(curlStatusIn(E2E_NAME, 'https://example.org/foo/../secret', '--path-as-is')).toBe('403');
       expect(curlStatusIn(E2E_NAME, 'https://example.org/foo/..%2f..%2fadmin', '--path-as-is')).toBe('403');
+    });
+
+    // Regressie op de finding #7-fix: de beslissing valt op de gedecodeerde
+    // vorm, maar geforward worden de originele encoded bytes. Werd de
+    // gedecodeerde vorm geforward, dan gooide http(s).request synchroon
+    // ERR_UNESCAPED_CHARACTERS op de rauwe spatie (bv. een Azure DevOps-
+    // projectnaam met %20). De fix heeft een herkenbare handtekening: een
+    // wélgevormde upstream-status die géén '000', '403' of '400' is —
+    //   • '000'  = de gateway ging neer óf de CONNECT werd geweigerd (pre-fix
+    //              crash, vóór de 400-guard bestond),
+    //   • '403'  = door Huddle's pad-policy geblokkeerd (mag hier niet: /foo/*
+    //              matcht op de gedecodeerde vorm),
+    //   • '400'  = de bad_request-guard vuurt — precies wat er gebeurt als de
+    //              gedecodeerde (rauwe-spatie) vorm wél geforward zou worden en
+    //              http(s).request synchroon gooit.
+    // Zo pinnen we de fix vast zonder afhankelijk te zijn van de exacte
+    // upstream-status van example.org (die mag 2xx/3xx/4xx zijn).
+    const forwardedOk = (status: string) => {
+      expect(status).toMatch(/^[1-5]\d\d$/); // een echte upstream-HTTP-status, geen '000'
+      expect(status).not.toBe('403'); // niet door Huddle geblokkeerd
+      expect(status).not.toBe('400'); // niet de forward-guard: encoded bytes gooien nooit
+    };
+    it('%-encoded pad (%20) wordt geforward en crasht de gateway niet', async () => {
+      await clearRulesForDomain('example.org');
+      const denyId = await createRule('example.org', 'deny');
+      await enablePathMode(denyId);
+      await createRule('example.org', 'allow', { path_pattern: '/foo/*' });
+      await sleep(1000);
+      // MITM-pad (https): matcht /foo/* op de gedecodeerde vorm, bereikt upstream.
+      forwardedOk(curlStatusIn(E2E_NAME, 'https://example.org/foo/a%20b', '--path-as-is'));
+      // Plain-HTTP-pad: zelfde invariant.
+      forwardedOk(curlStatusIn(E2E_NAME, 'http://example.org/foo/a%20b', '--path-as-is'));
+      // De gateway leeft nog: een gewoon toegestaan subpad krijgt weer een
+      // wélgevormde upstream-status (geen '000').
+      expect(curlStatusIn(E2E_NAME, 'https://example.org/foo/', '--path-as-is')).toMatch(/^[1-5]\d\d$/);
     });
   });
 

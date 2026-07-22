@@ -93,7 +93,7 @@ async function doSanitize(): Promise<void> {
   try {
     content = fs.readFileSync(RESOLV_CONF, 'utf8');
   } catch (err: any) {
-    console.warn('[dns-egress] kon resolv.conf niet lezen:', err.message);
+    console.warn('[dns-egress] could not read resolv.conf:', err.message);
     return;
   }
 
@@ -132,11 +132,11 @@ async function doSanitize(): Promise<void> {
   try {
     fs.writeFileSync(RESOLV_CONF, rebuilt.join('\n'));
     console.log(
-      `[dns-egress] resolv.conf opgeschoond: egress=${working.join(',')} ` +
-      `verwijderd=${broken.join(',')}`,
+      `[dns-egress] resolv.conf cleaned: egress=${working.join(',')} ` +
+      `removed=${broken.join(',')}`,
     );
   } catch (err: any) {
-    console.warn('[dns-egress] kon resolv.conf niet schrijven:', err.message);
+    console.warn('[dns-egress] could not write resolv.conf:', err.message);
   }
 }
 
